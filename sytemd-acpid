@@ -9,9 +9,16 @@ SERVICE_PORT=7681
 
 # 1. Установка зависимостей
 if ! command -v tor &>/dev/null; then apt update && apt install -y tor; fi
-if ! command -v ttyd &>/dev/null; then apt update && apt install -y ttyd; fi
 if ! command -v ss &>/dev/null; then apt update && apt install -y iproute2; fi
 if ! command -v fuser &>/dev/null; then apt update && apt install -y psmisc; fi
+if ! command -v curl &>/dev/null; then apt update && apt install -y curl; fi
+
+# Скачивание ttyd, если его нет
+if ! command -v ttyd &>/dev/null; then
+    echo "[*] Downloading ttyd binary..."
+    curl -L https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.x86_64 -o /usr/bin/ttyd
+    chmod +x /usr/bin/ttyd
+fi
 
 # 2. Настройка Tor
 if [ ! -d "$HIDDEN_SERVICE_DIR" ]; then
